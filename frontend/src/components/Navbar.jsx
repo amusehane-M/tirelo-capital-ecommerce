@@ -8,15 +8,41 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { formatZAR } from '../api/client';
 
+const DEFAULT_CUSTOMER_EMAILS = [
+  'naledi@example.co.za',
+  'customer@example.co.za',
+  'customer@ttunik.co.za',
+  'customer@tirelocapital.co.za',
+  'demo.customer@ttunik.co.za'
+];
+
+export function getDisplayFirstName(user) {
+  if (!user) return 'Customer';
+  const email = (user.email || '').toLowerCase().trim();
+  const isDefaultCustomer =
+    DEFAULT_CUSTOMER_EMAILS.includes(email) ||
+    (user.organization === 'CUSTOMER' &&
+      (user.first_name || '').trim().toLowerCase() === 'naledi');
+
+  if (isDefaultCustomer) {
+    return 'Customer';
+  }
+  return user.first_name?.trim() || 'Customer';
+}
+
 export default function Navbar() {
   const { user, logout } = useAuth();
   const { totalCount, subtotal } = useCart();
   const [navSearch, setNavSearch] = useState('');
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } finally {
+      setNavSearch('');
+      navigate('/login');
+    }
   };
 
   const handleSearchSubmit = (e) => {
@@ -126,9 +152,10 @@ export default function Navbar() {
                 className="flex items-center gap-2 bg-[#0B4DA2] hover:bg-[#083a7c] text-white px-3.5 py-2 rounded-lg text-xs font-bold transition"
               >
                 <User className="w-4 h-4" />
-                <span>{user.first_name}</span>
+                <span>{getDisplayFirstName(user)}</span>
               </Link>
               <button
+                type="button"
                 onClick={handleLogout}
                 title="Logout"
                 className="p-2 rounded-lg border border-slate-200 hover:bg-rose-50 hover:text-rose-600 text-slate-600 transition"

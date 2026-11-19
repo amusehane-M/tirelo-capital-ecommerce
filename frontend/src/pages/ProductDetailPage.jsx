@@ -13,32 +13,68 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState(null);
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
+    setLoading(true);
+    setError('');
     api
       .get(`/products/${slug}`)
       .then(({ data }) => {
-        setProduct(data.product);
-        if (data.product.variants?.length > 0) {
-          setSelectedVariant(data.product.variants[0]);
+        const fetched = data?.product || data;
+        setProduct(fetched);
+        if (fetched?.variants?.length > 0) {
+          setSelectedVariant(fetched.variants[0]);
+        } else {
+          setSelectedVariant(null);
         }
+      })
+      .catch((err) => {
+        setError(err.response?.data?.message || 'Unable to load product details.');
+        setProduct(null);
       })
       .finally(() => setLoading(false));
   }, [slug]);
 
-  if (loading) return <div className="max-w-7xl mx-auto p-10 text-center text-slate-500">Loading product details...</div>;
-  if (!product) return <div className="max-w-7xl mx-auto p-10 text-center text-rose-600">Product not found.</div>;
+  if (loading) {
+    return <div className="max-w-7xl mx-auto p-10 text-center text-slate-500">Loading product details...</div>;
+  }
 
-  const effectivePrice = Number(product.retail_price) + Number(selectedVariant?.price_adjustment || 0);
+  if (error || !product) {
+    return (
+      <div className="max-w-7xl mx-auto p-10 text-center space-y-3">
+        <p className="text-rose-600 font-semibold">{error || 'Product not found.'}</p>
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          className="inline-flex items-center gap-1.5 text-sm font-bold text-[#0B4DA2] hover:underline"
+        >
+          <ArrowLeft className="w-4 h-4" /> Return to Catalogue
+        </button>
+      </div>
+    );
+  }
+
+  const effectivePrice = Number(product.retail_price || 0) + Number(selectedVariant?.price_adjustment || 0);
+  const displayImage =
+    product.images?.[0]?.image_url ||
+    product.primary_image ||
+    'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=600&q=80';
+  const inStock = Number(product.stock_available ?? 1) > 0;
 
   const handleAction = (mode) => {
+    if (!inStock) return;
     addToCart(product, selectedVariant, 1, mode);
     navigate('/cart');
   };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      <button onClick={() => navigate(-1)} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900">
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-[#0B4DA2] transition"
+      >
         <ArrowLeft className="w-4 h-4" /> Back to Catalogue
       </button>
 
@@ -47,18 +83,18 @@ export default function ProductDetailPage() {
         <div className="lg:col-span-5 space-y-4">
           <div className="aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200">
             <img
-              src={product.images?.[0]?.image_url}
+              src={displayImage}
               alt={product.name}
               className="w-full h-full object-cover"
             />
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs text-slate-600 bg-slate-50 p-3.5 rounded-xl">
             <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{product.warranty_info}</span>
+              <Shield className="w-4 h-4 text-[#0B4DA2] shrink-0" />
+              <span>{product.warranty_info || '12-Month Standard Warranty'}</span>
             </div>
             <div className="flex items-center gap-2">
-              <Truck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <Truck className="w-4 h-4 text-[#0B4DA2] shrink-0" />
               <span>Nationwide SA Courier Delivery</span>
             </div>
           </div>
@@ -67,12 +103,16 @@ export default function ProductDetailPage() {
         {/* Details & Customization Column */}
         <div className="lg:col-span-7 space-y-6">
           <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-600">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#0B4DA2]">
               <span>{product.brand_name}</span>
               <span>•</span>
               <span>{product.category_name}</span>
-              <span>•</span>
-              <span className="text-slate-500">Model: {product.model_number}</span>
+              {product.model_number && (
+                <>
+                  <span>•</span>
+                  <span className="text-slate-500">Model: {product.model_number}</span>
+                </>
+              )}
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">{product.name}</h1>
             <p className="text-slate-600 text-sm mt-2 leading-relaxed">{product.description}</p>
@@ -80,12 +120,16 @@ export default function ProductDetailPage() {
 
           <div className="flex items-baseline gap-4">
             <span className="text-3xl font-extrabold text-slate-900">{formatZAR(effectivePrice)}</span>
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800">
-              {product.stock_available} units available
+            <span
+              className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                inStock ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'
+              }`}
+            >
+              {inStock ? `${product.stock_available} units available` : 'Out of Stock'}
             </span>
           </div>
 
-          {/* Product Variants / Customization (URS Section 3.6) */}
+          {/* Product Variants / Customization */}
           {product.variants?.length > 0 && (
             <div className="space-y-2">
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
@@ -99,12 +143,12 @@ export default function ProductDetailPage() {
                     onClick={() => setSelectedVariant(v)}
                     className={`px-4 py-2 rounded-xl text-xs font-bold border transition ${
                       selectedVariant?.id === v.id
-                        ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500/20'
+                        ? 'border-[#0B4DA2] bg-sky-50 text-[#0B4DA2] ring-2 ring-[#0B4DA2]/20'
                         : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
                     }`}
                   >
                     {v.variant_name}
-                    {v.price_adjustment > 0 && ` (+${formatZAR(v.price_adjustment)})`}
+                    {Number(v.price_adjustment) > 0 && ` (+${formatZAR(v.price_adjustment)})`}
                   </button>
                 ))}
               </div>
@@ -122,16 +166,20 @@ export default function ProductDetailPage() {
           {/* Purchase Action Buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
             <button
+              type="button"
               onClick={() => handleAction('CASH')}
-              className="flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-6 rounded-xl transition"
+              disabled={!inStock}
+              className="flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold py-3.5 px-6 rounded-xl transition"
             >
               <ShoppingCart className="w-5 h-5" /> Buy Cash ({formatZAR(effectivePrice)})
             </button>
 
             {Boolean(product.is_credit_eligible) && (
               <button
+                type="button"
                 onClick={() => handleAction('CREDIT')}
-                className="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-bold py-3.5 px-6 rounded-xl transition"
+                disabled={!inStock}
+                className="flex items-center justify-center gap-2 bg-[#1D63B8] hover:bg-[#0B4DA2] disabled:bg-slate-300 text-white font-bold py-3.5 px-6 rounded-xl transition"
               >
                 <CreditCard className="w-5 h-5" /> Buy on Credit (Apply Now)
               </button>

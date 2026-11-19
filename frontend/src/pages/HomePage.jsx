@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   ChevronLeft, ChevronRight, ChevronDown, CreditCard,
-  ShoppingBag, CheckCircle2, Tag, Layers, Award
+  ShoppingBag, CheckCircle2, Tag, Layers, Award, Sparkles
 } from 'lucide-react';
 import api, { formatZAR } from '../api/client';
 import { useCart } from '../context/CartContext';
@@ -41,7 +41,7 @@ const VISUAL_CATEGORIES = [
   {
     label: 'ROUTERS',
     slug: 'networking-equipment',
-    img: 'https://images.unsplash.com/photo-1648413653819-7c0fd93e8e6a?auto=format&fit=crop&w=400&q=80'
+    img: 'https://images.pexels.com/photos/4218546/pexels-photo-4218546.jpeg?auto=compress&cs=tinysrgb&w=400'
   },
   {
     label: 'NETWORKING',
@@ -79,14 +79,28 @@ const HERO_SLIDES = [
   }
 ];
 
+function isOnSpecialOrPromotion(product) {
+  return Boolean(
+    product.is_on_promotion ||
+    product.on_promotion ||
+    product.is_special ||
+    product.promo_price ||
+    product.compare_at_price ||
+    product.is_featured ||
+    product.is_credit_eligible
+  );
+}
+
 export default function HomePage() {
   const [searchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [meta, setMeta] = useState({ categories: [], brands: [] });
   const [loading, setLoading] = useState(true);
+  const [cartNotice, setCartNotice] = useState('');
 
   const [category, setCategory] = useState(searchParams.get('category') || '');
   const [brand, setBrand] = useState(searchParams.get('brand') || '');
+  const [specialsOnly, setSpecialsOnly] = useState(searchParams.get('promo') === '1');
   const [creditOnly, setCreditOnly] = useState(searchParams.get('credit') === '1');
   const [inStockOnly, setInStockOnly] = useState(false);
   const [sort, setSort] = useState('newest');
@@ -97,10 +111,13 @@ export default function HomePage() {
 
   useEffect(() => {
     setCreditOnly(searchParams.get('credit') === '1');
+    setSpecialsOnly(searchParams.get('promo') === '1');
+    if (searchParams.get('category')) setCategory(searchParams.get('category'));
+    if (searchParams.get('brand')) setBrand(searchParams.get('brand'));
   }, [searchParams]);
 
   useEffect(() => {
-    api.get('/products/meta').then(({ data }) => setMeta(data));
+    api.get('/products/meta').then(({ data }) => setMeta(data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -111,18 +128,33 @@ export default function HomePage() {
     if (category) params.category = category;
     if (brand) params.brand = brand;
     if (creditOnly) params.credit_only = '1';
+    if (specialsOnly) params.promotion = '1';
     if (sort) params.sort = sort;
 
     api
       .get('/products', { params })
       .then(({ data }) => {
-        const list = inStockOnly
-          ? data.products.filter((p) => p.stock_available > 0)
-          : data.products;
+        let list = Array.isArray(data.products) ? data.products : [];
+        if (creditOnly) {
+          list = list.filter((p) => Boolean(p.is_credit_eligible));
+        }
+        if (specialsOnly) {
+          list = list.filter((p) => isOnSpecialOrPromotion(p));
+        }
+        if (inStockOnly) {
+          list = list.filter((p) => Number(p.stock_available) > 0);
+        }
         setProducts(list);
       })
+      .catch(() => setProducts([]))
       .finally(() => setLoading(false));
-  }, [searchParams, category, brand, creditOnly, inStockOnly, sort]);
+  }, [searchParams, category, brand, creditOnly, specialsOnly, inStockOnly, sort]);
+
+  const handleQuickAddCash = (product) => {
+    addToCart(product, null, 1, 'CASH');
+    setCartNotice(`Added "${product.name}" to your cart.`);
+    setTimeout(() => setCartNotice(''), 2500);
+  };
 
   const scrollCategories = (dir) => {
     if (!categoryScrollRef.current) return;
@@ -133,9 +165,16 @@ export default function HomePage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+      {cartNotice && (
+        <div className="fixed bottom-5 right-5 z-50 bg-[#0B4DA2] text-white text-xs font-bold px-4 py-3 rounded-xl shadow-lg flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0" />
+          <span>{cartNotice}</span>
+        </div>
+      )}
+
       {/* TOP SPLIT: Left Filter Sidebar + Right Hero Banner */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        {/* Left Sidebar Filters (Matches PDF: CATEGORY, BRAND, ON PROMOTION, IN STOCK) */}
+        {/* Left Sidebar Filters */}
         <aside className="lg:col-span-3 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col justify-between">
           <div className="divide-y divide-slate-200">
             {/* CATEGORY */}
@@ -174,11 +213,26 @@ export default function HomePage() {
               </select>
             </div>
 
-            {/* ON PROMOTION / CREDIT ELIGIBLE */}
+            {/* SPECIALS & PROMOTIONS */}
             <div className="p-3.5">
               <label className="flex items-center justify-between cursor-pointer">
                 <span className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-[#0B4DA2]">
-                  <Tag className="w-3.5 h-3.5" /> ON PROMOTION / CREDIT
+                  <Sparkles className="w-3.5 h-3.5" /> SPECIALS & PROMOTIONS
+                </span>
+                <input
+                  type="checkbox"
+                  checked={specialsOnly}
+                  onChange={(e) => setSpecialsOnly(e.target.checked)}
+                  className="rounded text-[#0B4DA2] focus:ring-[#0B4DA2]"
+                />
+              </label>
+            </div>
+
+            {/* BUY ON CREDIT ELIGIBLE */}
+            <div className="p-3.5">
+              <label className="flex items-center justify-between cursor-pointer">
+                <span className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-[#0B4DA2]">
+                  <Tag className="w-3.5 h-3.5" /> BUY ON CREDIT
                 </span>
                 <input
                   type="checkbox"
@@ -211,6 +265,7 @@ export default function HomePage() {
               onClick={() => {
                 setCategory('');
                 setBrand('');
+                setSpecialsOnly(false);
                 setCreditOnly(false);
                 setInStockOnly(false);
               }}
@@ -221,7 +276,7 @@ export default function HomePage() {
           </div>
         </aside>
 
-        {/* Right Hero Banner (Matches PDF: BEST PRICES, QUICK DELIVERY + Shop Now + Product Visual) */}
+        {/* Right Hero Banner */}
         <section className="lg:col-span-9 relative rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-gradient-to-r from-[#062958] via-[#0B4DA2] to-[#1D63B8] text-white flex items-center">
           <button
             type="button"
@@ -287,7 +342,7 @@ export default function HomePage() {
         </section>
       </div>
 
-      {/* SHOP BY CATEGORIES VISUAL CAROUSEL (Exact match to PDF blue-bordered cards & blue footer labels) */}
+      {/* SHOP BY CATEGORIES VISUAL CAROUSEL */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xl sm:text-2xl font-light tracking-wide text-[#0B4DA2] uppercase">
@@ -295,6 +350,7 @@ export default function HomePage() {
           </h2>
           {category && (
             <button
+              type="button"
               onClick={() => setCategory('')}
               className="text-xs font-bold text-[#0B4DA2] hover:underline"
             >
@@ -357,7 +413,11 @@ export default function HomePage() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
           <div>
             <h2 className="text-lg font-extrabold text-slate-900">
-              {creditOnly ? 'Credit-Eligible Devices (Tirelo Capital)' : 'Featured Products & Hardware'}
+              {specialsOnly
+                ? 'Specials & Promotions'
+                : creditOnly
+                ? 'Credit-Eligible Devices (Tirelo Capital)'
+                : 'Featured Products & Hardware'}
             </h2>
             <p className="text-xs text-slate-500">
               Showing {products.length} item{products.length === 1 ? '' : 's'}
@@ -388,91 +448,95 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {products.map((product) => (
-              <div
-                key={product.id}
-                className="bg-white rounded-xl border border-slate-200 hover:border-[#1D63B8] shadow-sm hover:shadow-md transition flex flex-col overflow-hidden"
-              >
-                <Link to={`/products/${product.slug}`} className="relative block aspect-[4/3] bg-white p-3 border-b border-slate-100 overflow-hidden">
-                  <img
-                    src={product.primary_image}
-                    alt={product.name}
-                    loading="lazy"
-                    className="w-full h-full object-cover rounded-lg hover:scale-105 transition duration-300"
-                  />
-                  {product.is_credit_eligible ? (
-                    <span className="absolute top-3 left-3 bg-[#0B4DA2] text-white text-[10px] font-bold px-2.5 py-1 rounded shadow">
-                      Buy on Credit
-                    </span>
-                  ) : (
-                    <span className="absolute top-3 left-3 bg-slate-700 text-white text-[10px] font-semibold px-2.5 py-1 rounded">
-                      Cash Only
-                    </span>
-                  )}
-                </Link>
-
-                <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
-                  <div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-                      <span className="font-bold text-[#0B4DA2] uppercase">{product.brand_name}</span>
-                      <span>{product.model_number}</span>
-                    </div>
-                    <Link to={`/products/${product.slug}`} className="font-bold text-sm text-slate-900 hover:text-[#0B4DA2] line-clamp-2">
-                      {product.name}
-                    </Link>
-                    <p className="text-[11px] text-emerald-600 font-medium flex items-center gap-1 mt-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      {product.stock_available > 0 ? `${product.stock_available} In Stock` : 'Out of Stock'}
-                    </p>
-                  </div>
-
-                  <div className="space-y-2.5 pt-2 border-t border-slate-100">
-                    <div>
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 block">Cash Retail Price</span>
-                      <span className="text-lg font-black text-slate-900">{formatZAR(product.retail_price)}</span>
-                    </div>
-
-                    {product.credit_preview && (
-                      <div className="bg-sky-50 border border-sky-200 rounded-lg p-2 text-[11px] space-y-0.5">
-                        <div className="flex justify-between">
-                          <span className="text-slate-600">Deposit ({product.credit_preview.selected_deposit_percentage}%):</span>
-                          <span className="font-bold text-slate-900">{formatZAR(product.credit_preview.deposit_amount)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-600">Est. Monthly (12m):</span>
-                          <span className="font-bold text-[#0B4DA2]">{formatZAR(product.credit_preview.estimated_monthly_instalment)}</span>
-                        </div>
-                      </div>
+            {products.map((product) => {
+              const detailPath = `/products/${product.slug || product.id}`;
+              return (
+                <div
+                  key={product.id}
+                  className="bg-white rounded-xl border border-slate-200 hover:border-[#1D63B8] shadow-sm hover:shadow-md transition flex flex-col overflow-hidden"
+                >
+                  <Link to={detailPath} className="relative block aspect-[4/3] bg-white p-3 border-b border-slate-100 overflow-hidden">
+                    <img
+                      src={product.primary_image}
+                      alt={product.name}
+                      loading="lazy"
+                      className="w-full h-full object-cover rounded-lg hover:scale-105 transition duration-300"
+                    />
+                    {product.is_credit_eligible ? (
+                      <span className="absolute top-3 left-3 bg-[#0B4DA2] text-white text-[10px] font-bold px-2.5 py-1 rounded shadow">
+                        Buy on Credit
+                      </span>
+                    ) : (
+                      <span className="absolute top-3 left-3 bg-slate-700 text-white text-[10px] font-semibold px-2.5 py-1 rounded">
+                        Cash Only
+                      </span>
                     )}
+                  </Link>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => addToCart(product, null, 1, 'CASH')}
-                        disabled={product.stock_available <= 0}
-                        className="flex items-center justify-center gap-1 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white text-xs font-bold py-2 rounded-lg transition"
-                      >
-                        <ShoppingBag className="w-3.5 h-3.5" /> Buy Cash
-                      </button>
-                      {product.is_credit_eligible ? (
-                        <Link
-                          to={`/products/${product.slug}`}
-                          className="flex items-center justify-center gap-1 bg-[#1D63B8] hover:bg-[#0B4DA2] text-white text-xs font-bold py-2 rounded-lg transition"
-                        >
-                          <CreditCard className="w-3.5 h-3.5" /> Credit
-                        </Link>
-                      ) : (
-                        <Link
-                          to={`/products/${product.slug}`}
-                          className="flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-2 rounded-lg transition"
-                        >
-                          Details
-                        </Link>
+                  <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+                        <span className="font-bold text-[#0B4DA2] uppercase">{product.brand_name}</span>
+                        <span>{product.model_number}</span>
+                      </div>
+                      <Link to={detailPath} className="font-bold text-sm text-slate-900 hover:text-[#0B4DA2] line-clamp-2">
+                        {product.name}
+                      </Link>
+                      <p className="text-[11px] text-emerald-600 font-medium flex items-center gap-1 mt-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {product.stock_available > 0 ? `${product.stock_available} In Stock` : 'Out of Stock'}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2.5 pt-2 border-t border-slate-100">
+                      <div>
+                        <span className="text-[10px] uppercase tracking-wider text-slate-400 block">Cash Retail Price</span>
+                        <span className="text-lg font-black text-slate-900">{formatZAR(product.retail_price)}</span>
+                      </div>
+
+                      {product.credit_preview && (
+                        <div className="bg-sky-50 border border-sky-200 rounded-lg p-2 text-[11px] space-y-0.5">
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Deposit ({product.credit_preview.selected_deposit_percentage}%):</span>
+                            <span className="font-bold text-slate-900">{formatZAR(product.credit_preview.deposit_amount)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Est. Monthly (12m):</span>
+                            <span className="font-bold text-[#0B4DA2]">{formatZAR(product.credit_preview.estimated_monthly_instalment)}</span>
+                          </div>
+                        </div>
                       )}
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickAddCash(product)}
+                          disabled={product.stock_available <= 0}
+                          className="flex items-center justify-center gap-1 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white text-xs font-bold py-2 rounded-lg transition"
+                        >
+                          <ShoppingBag className="w-3.5 h-3.5" /> Buy Cash
+                        </button>
+                        {product.is_credit_eligible ? (
+                          <Link
+                            to={detailPath}
+                            className="flex items-center justify-center gap-1 bg-[#1D63B8] hover:bg-[#0B4DA2] text-white text-xs font-bold py-2 rounded-lg transition"
+                          >
+                            <CreditCard className="w-3.5 h-3.5" /> Credit
+                          </Link>
+                        ) : (
+                          <Link
+                            to={detailPath}
+                            className="flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-2 rounded-lg transition"
+                          >
+                            Details
+                          </Link>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

@@ -11,10 +11,33 @@ export default function LoginRegisterPage() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
-    first_name: '', surname: '', id_type: 'SA_ID', id_number: '', date_of_birth: '',
-    email: '', mobile_number: '', password: '', popia_consent: false,
-    street_address: '', suburb: '', city: '', province: 'Gauteng', postal_code: ''
+    first_name: '',
+    surname: '',
+    id_type: 'SA_ID',
+    id_number: '',
+    date_of_birth: '',
+    email: '',
+    mobile_number: '',
+    password: '',
+    popia_consent: false,
+    street_address: '',
+    suburb: '',
+    city: '',
+    province: 'Gauteng',
+    postal_code: ''
   });
+
+  const deriveDobFromSaId = (idNum) => {
+    const clean = (idNum || '').replace(/\D/g, '');
+    if (clean.length >= 6) {
+      const yy = parseInt(clean.slice(0, 2), 10);
+      const mm = clean.slice(2, 4);
+      const dd = clean.slice(4, 6);
+      const year = yy <= 26 ? `20${clean.slice(0, 2)}` : `19${clean.slice(0, 2)}`;
+      return `${year}-${mm}-${dd}`;
+    }
+    return '1995-01-01';
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,25 +45,45 @@ export default function LoginRegisterPage() {
     setLoading(true);
     try {
       if (isRegister) {
-        const { data } = await api.post('/auth/register', form);
-        localStorage.setItem('tt_unik_token', data.token);
+        const payload = {
+          ...form,
+          date_of_birth: form.date_of_birth || deriveDobFromSaId(form.id_number),
+          suburb: form.suburb.trim() || form.city.trim()
+        };
+        const { data } = await api.post('/auth/register', payload);
+        if (data?.token) {
+          localStorage.setItem('tt_unik_token', data.token);
+        }
         window.location.href = '/dashboard';
       } else {
-        const loggedUser = await login(form.email, form.password);
+        const loggedUser = await login(form.email.trim(), form.password);
         if (loggedUser.organization === 'TIRELO_CAPITAL') navigate('/tirelo-portal');
         else if (loggedUser.organization === 'TT_UNIK') navigate('/admin');
         else navigate('/dashboard');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Authentication failed.');
+      const details = err.response?.data?.errors?.[0]?.msg || err.response?.data?.error;
+      setError(details || err.response?.data?.message || 'Authentication failed. Please check your details and ensure the backend server is running.');
     } finally {
       setLoading(false);
     }
   };
 
-  const quickFill = (email) => {
+  const quickFill = async (email) => {
+    setError('');
     setIsRegister(false);
     setForm((f) => ({ ...f, email, password: 'Password@123' }));
+    setLoading(true);
+    try {
+      const loggedUser = await login(email, 'Password@123');
+      if (loggedUser.organization === 'TIRELO_CAPITAL') navigate('/tirelo-portal');
+      else if (loggedUser.organization === 'TT_UNIK') navigate('/admin');
+      else navigate('/dashboard');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Demo login failed. Ensure the backend server is running on port 5000.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -49,15 +92,15 @@ export default function LoginRegisterPage() {
         <div className="flex border-b border-slate-200">
           <button
             type="button"
-            onClick={() => setIsRegister(false)}
-            className={`pb-3 px-4 text-sm font-bold border-b-2 transition ${!isRegister ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500'}`}
+            onClick={() => { setIsRegister(false); setError(''); }}
+            className={`pb-3 px-4 text-sm font-bold border-b-2 transition ${!isRegister ? 'border-[#0B4DA2] text-[#0B4DA2]' : 'border-transparent text-slate-500'}`}
           >
             Sign In
           </button>
           <button
             type="button"
-            onClick={() => setIsRegister(true)}
-            className={`pb-3 px-4 text-sm font-bold border-b-2 transition ${isRegister ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500'}`}
+            onClick={() => { setIsRegister(true); setError(''); }}
+            className={`pb-3 px-4 text-sm font-bold border-b-2 transition ${isRegister ? 'border-[#0B4DA2] text-[#0B4DA2]' : 'border-transparent text-slate-500'}`}
           >
             Create Customer Account
           </button>
@@ -67,22 +110,22 @@ export default function LoginRegisterPage() {
         {!isRegister && (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
-              Quick Demo Role Logins (Password: Password@123)
+              One-Click Demo Role Logins (Password: Password@123)
             </span>
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <button type="button" onClick={() => quickFill('customer@example.co.za')} className="text-left p-2 rounded bg-white border hover:border-emerald-500">
+              <button type="button" onClick={() => quickFill('customer@example.co.za')} className="text-left p-2 rounded bg-white border hover:border-[#0B4DA2] transition">
                 <strong className="block text-slate-900">Customer</strong>
                 <span className="text-slate-500">customer@example.co.za</span>
               </button>
-              <button type="button" onClick={() => quickFill('credit.officer@tirelocapital.co.za')} className="text-left p-2 rounded bg-white border hover:border-sky-500">
+              <button type="button" onClick={() => quickFill('credit.officer@tirelocapital.co.za')} className="text-left p-2 rounded bg-white border hover:border-sky-500 transition">
                 <strong className="block text-sky-700">Tirelo Credit Officer</strong>
                 <span className="text-slate-500">credit.officer@tirelocapital.co.za</span>
               </button>
-              <button type="button" onClick={() => quickFill('finance.admin@tirelocapital.co.za')} className="text-left p-2 rounded bg-white border hover:border-sky-500">
+              <button type="button" onClick={() => quickFill('finance.admin@tirelocapital.co.za')} className="text-left p-2 rounded bg-white border hover:border-sky-500 transition">
                 <strong className="block text-sky-700">Tirelo Finance Admin</strong>
                 <span className="text-slate-500">finance.admin@tirelocapital.co.za</span>
               </button>
-              <button type="button" onClick={() => quickFill('superadmin@ttunik.co.za')} className="text-left p-2 rounded bg-white border hover:border-amber-500">
+              <button type="button" onClick={() => quickFill('superadmin@ttunik.co.za')} className="text-left p-2 rounded bg-white border hover:border-amber-500 transition">
                 <strong className="block text-amber-700">TT UNIK Super Admin</strong>
                 <span className="text-slate-500">superadmin@ttunik.co.za</span>
               </button>
@@ -96,24 +139,34 @@ export default function LoginRegisterPage() {
           {isRegister && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <input required placeholder="First Name" value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" />
-                <input required placeholder="Surname" value={form.surname} onChange={(e) => setForm({ ...form, surname: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" />
+                <input required placeholder="First Name" value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} className="px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <input required placeholder="Surname" value={form.surname} onChange={(e) => setForm({ ...form, surname: e.target.value })} className="px-3 py-2 border border-slate-300 rounded-lg text-sm" />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <input required placeholder="SA ID / Passport Number" value={form.id_number} onChange={(e) => setForm({ ...form, id_number: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" />
-                <input required placeholder="Mobile (+27...)" value={form.mobile_number} onChange={(e) => setForm({ ...form, mobile_number: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" />
+                <input required placeholder="SA ID / Passport Number" value={form.id_number} onChange={(e) => setForm({ ...form, id_number: e.target.value })} className="px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <input required placeholder="Mobile (+27...)" value={form.mobile_number} onChange={(e) => setForm({ ...form, mobile_number: e.target.value })} className="px-3 py-2 border border-slate-300 rounded-lg text-sm" />
               </div>
-              <input required placeholder="Street Address" value={form.street_address} onChange={(e) => setForm({ ...form, street_address: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-1">Date of Birth</label>
+                  <input type="date" value={form.date_of_birth} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-1">Suburb</label>
+                  <input placeholder="Suburb" value={form.suburb} onChange={(e) => setForm({ ...form, suburb: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                </div>
+              </div>
+              <input required placeholder="Street Address" value={form.street_address} onChange={(e) => setForm({ ...form, street_address: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
               <div className="grid grid-cols-3 gap-2">
-                <input required placeholder="City" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" />
-                <input required placeholder="Province" value={form.province} onChange={(e) => setForm({ ...form, province: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" />
-                <input required placeholder="Postal Code" value={form.postal_code} onChange={(e) => setForm({ ...form, postal_code: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" />
+                <input required placeholder="City" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className="px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <input required placeholder="Province" value={form.province} onChange={(e) => setForm({ ...form, province: e.target.value })} className="px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <input required placeholder="Postal Code" value={form.postal_code} onChange={(e) => setForm({ ...form, postal_code: e.target.value })} className="px-3 py-2 border border-slate-300 rounded-lg text-sm" />
               </div>
             </>
           )}
 
-          <input required type="email" placeholder="Email Address" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full px-3.5 py-2.5 border rounded-lg text-sm" />
-          <input required type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full px-3.5 py-2.5 border rounded-lg text-sm" />
+          <input required type="email" placeholder="Email Address" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm" />
+          <input required type="password" placeholder="Password (min 8 chars)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm" />
 
           {isRegister && (
             <label className="flex items-start gap-2 text-xs text-slate-600">
@@ -124,7 +177,7 @@ export default function LoginRegisterPage() {
             </label>
           )}
 
-          <button type="submit" disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl text-sm transition">
+          <button type="submit" disabled={loading} className="w-full bg-[#0B4DA2] hover:bg-[#083a7c] text-white font-bold py-3 rounded-xl text-sm transition">
             {loading ? 'Processing...' : isRegister ? 'Register Account' : 'Sign In'}
           </button>
         </form>

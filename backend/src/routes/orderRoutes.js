@@ -23,7 +23,7 @@ router.post('/checkout', authenticate, (req, res) => {
   const resolvedItems = [];
 
   for (const item of items) {
-    const product = db.prepare('SELECT * FROM products WHERE id = ? AND status = "PUBLISHED"').get(item.product_id);
+    const product = db.prepare("SELECT * FROM products WHERE id = ? AND status = 'PUBLISHED'").get(item.product_id);
     if (!product) return res.status(404).json({ message: `Product ID ${item.product_id} not found.` });
 
     if (purchase_type === 'CREDIT' && !product.is_credit_eligible) {
